@@ -9,7 +9,15 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
-        ("share/" + package_name + "/launch", ["launch/demo_planner.launch.py"]),
+        (
+            "share/" + package_name + "/launch",
+            [
+                "launch/demo_planner.launch.py",
+                "launch/gz_sim_roboworks.launch.py",
+                "launch/nav2_hybrid_astar_bringup.launch.py",
+            ],
+        ),
+        ("share/" + package_name + "/config", ["config/nav2_roboworks_minimal.yaml"]),
         ("share/" + package_name + "/rviz", ["rviz/hybrid_astar_demo.rviz"]),
     ],
     install_requires=["setuptools"],
@@ -22,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "hybrid_astar_planner_node = hybrid_astar_planner.planner_node:main",
+            "nav2_hybrid_astar_server = hybrid_astar_planner.nav2_hybrid_astar_server:main",
         ],
     },
 )
