@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -17,7 +17,22 @@ def generate_launch_description() -> LaunchDescription:
     Run Gazebo + bridge separately (e.g. `gz_sim_roboworks.launch.py`).
     """
     pkg_share = get_package_share_directory("hybrid_astar_planner")
-    nav2_bringup_share = get_package_share_directory("nav2_bringup")
+
+    try:
+        nav2_bringup_share = get_package_share_directory("nav2_bringup")
+    except PackageNotFoundError:
+        return LaunchDescription(
+            [
+                LogInfo(
+                    msg=(
+                        "ERROR: 'nav2_bringup' package not found. "
+                        "Install Nav2 for ROS 2 Humble, e.g.: "
+                        "sudo apt update && sudo apt install ros-humble-nav2-bringup"
+                    )
+                ),
+                Shutdown(reason="Nav2 not installed (nav2_bringup missing)."),
+            ]
+        )
 
     params_file = LaunchConfiguration("params_file")
     params_arg = DeclareLaunchArgument(

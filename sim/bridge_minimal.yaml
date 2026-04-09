@@ -1,4 +1,3 @@
----
 # ROS <-> Gazebo bridge mapping for the roboworks Ackermann model.
 #
 # This is based on the thesis navigation setup (ackermann_thesis/config/minimal_bridge.yaml).

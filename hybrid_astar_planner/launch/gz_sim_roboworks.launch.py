@@ -18,10 +18,10 @@ def generate_launch_description() -> LaunchDescription:
     pkg_ros_gz_sim = get_package_share_directory("ros_gz_sim")
     gz_sim_launch_file = os.path.join(pkg_ros_gz_sim, "launch", "gz_sim.launch.py")
 
-    # Use the vendored model (text) and rely on synced meshes when available.
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    sdf_file = os.path.join(repo_root, "sim", "roboworks_model", "roboworks", "model.sdf")
-    bridge_config = os.path.join(repo_root, "sim", "bridge_minimal.yaml")
+    # Use installed package share paths (works both from source + install space).
+    pkg_share = get_package_share_directory("hybrid_astar_planner")
+    sdf_file = os.path.join(pkg_share, "sim", "roboworks_model", "roboworks", "model.sdf")
+    bridge_config = os.path.join(pkg_share, "sim", "bridge_minimal.yaml")
 
     # Minimal headless world content (no GUI rendering).
     world_content = """<?xml version="1.0" ?>
@@ -44,8 +44,8 @@ def generate_launch_description() -> LaunchDescription:
   </world>
 </sdf>"""
 
-    # Write world into a deterministic repo-local temp folder.
-    tmp_dir = os.path.join(repo_root, "sim", "_tmp")
+    # Write world into a deterministic temp folder under package share.
+    tmp_dir = os.path.join(pkg_share, "sim", "_tmp")
     os.makedirs(tmp_dir, exist_ok=True)
     world_file = os.path.join(tmp_dir, "minimal_world.sdf")
     with open(world_file, "w", encoding="utf-8") as f:

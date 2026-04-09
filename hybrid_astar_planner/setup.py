@@ -1,6 +1,15 @@
+from pathlib import Path
+
 from setuptools import find_packages, setup
 
 package_name = "hybrid_astar_planner"
+
+
+def _collect_files(relative_root: str) -> list[str]:
+    root = Path(relative_root)
+    if not root.exists():
+        return []
+    return [str(p) for p in root.rglob("*") if p.is_file()]
 
 setup(
     name=package_name,
@@ -19,6 +28,16 @@ setup(
         ),
         ("share/" + package_name + "/config", ["config/nav2_roboworks_minimal.yaml"]),
         ("share/" + package_name + "/rviz", ["rviz/hybrid_astar_demo.rviz"]),
+        # Simulation assets (SDF model, meshes, bridge config).
+        ("share/" + package_name + "/sim", ["../sim/bridge_minimal.yaml"]),
+        (
+            "share/" + package_name + "/sim/roboworks_model/roboworks",
+            ["../sim/roboworks_model/roboworks/model.sdf", "../sim/roboworks_model/roboworks/model.config"],
+        ),
+        (
+            "share/" + package_name + "/sim/roboworks_model/roboworks/meshes",
+            _collect_files("../sim/roboworks_model/roboworks/meshes"),
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
