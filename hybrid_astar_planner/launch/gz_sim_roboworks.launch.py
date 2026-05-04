@@ -4,8 +4,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, LogInfo, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, TimerAction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -13,7 +14,7 @@ def generate_launch_description() -> LaunchDescription:
     """
     Gazebo (ros_gz_sim) + bridge + roboworks model spawn.
 
-    This launch is intended for WSL/headless usage (server-only Gazebo).
+    This launch starts modern Gazebo headless by default.
     """
     pkg_ros_gz_sim = get_package_share_directory("ros_gz_sim")
     gz_sim_launch_file = os.path.join(pkg_ros_gz_sim, "launch", "gz_sim.launch.py")
@@ -22,36 +23,15 @@ def generate_launch_description() -> LaunchDescription:
     pkg_share = get_package_share_directory("hybrid_astar_planner")
     sdf_file = os.path.join(pkg_share, "sim", "roboworks_model", "roboworks", "model.sdf")
     bridge_config = os.path.join(pkg_share, "sim", "bridge_minimal.yaml")
+    world_file = os.path.join(pkg_share, "sim", "worlds", "warehouse_lightweight_gz.sdf")
+    spawn_x = LaunchConfiguration("spawn_x")
+    spawn_y = LaunchConfiguration("spawn_y")
+    spawn_z = LaunchConfiguration("spawn_z")
 
-    # Minimal headless world content (no GUI rendering).
-    world_content = """<?xml version="1.0" ?>
-<sdf version="1.8">
-  <world name="minimal_headless">
-    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
-    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors"/>
-    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
-    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
-    <model name="ground_plane">
-      <static>true</static>
-      <link name="link">
-        <collision name="collision">
-          <geometry>
-            <plane><normal>0 0 1</normal></plane>
-          </geometry>
-        </collision>
-      </link>
-    </model>
-  </world>
-</sdf>"""
-
-    # Write world into a deterministic temp folder under package share.
-    tmp_dir = os.path.join(pkg_share, "sim", "_tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
-    world_file = os.path.join(tmp_dir, "minimal_world.sdf")
-    with open(world_file, "w", encoding="utf-8") as f:
-        f.write(world_content)
-
-    gz_args = f"-s -r -v 1 {world_file}"
+    # Ensure the simulator can find models referenced by model:// URIs in our sim/ folder.
+    # Modern ros_gz uses GZ_MODEL_PATH; older Gazebo uses GAZEBO_MODEL_PATH — set both.
+    model_path = os.path.join(pkg_share, "sim")
+    gz_args = f"-r -v 1 {world_file}"
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([gz_sim_launch_file]),
@@ -77,7 +57,18 @@ def generate_launch_description() -> LaunchDescription:
             Node(
                 package="ros_gz_sim",
                 executable="create",
-                arguments=["-file", sdf_file, "-name", "roboworks", "-x", "0", "-y", "0", "-z", "0.1"],
+                arguments=[
+                    "-file",
+                    sdf_file,
+                    "-name",
+                    "roboworks",
+                    "-x",
+                    spawn_x,
+                    "-y",
+                    spawn_y,
+                    "-z",
+                    spawn_z,
+                ],
                 output="screen",
             )
         ],
@@ -85,10 +76,16 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription(
         [
-            LogInfo(msg="Starting Gazebo headless + bridge + roboworks spawn"),
+            DeclareLaunchArgument("spawn_x", default_value="-8.0"),
+            DeclareLaunchArgument("spawn_y", default_value="-8.0"),
+            DeclareLaunchArgument("spawn_z", default_value="0.1"),
+            LogInfo(msg="Starting Gazebo + bridge + roboworks spawn"),
             LogInfo(msg=f"World file: {world_file}"),
             LogInfo(msg=f"Robot model SDF: {sdf_file}"),
             LogInfo(msg=f"Bridge config: {bridge_config}"),
+            # Export model path so model://box and other model URIs resolve from this package
+            SetEnvironmentVariable(name="GZ_MODEL_PATH", value=model_path),
+            SetEnvironmentVariable(name="GAZEBO_MODEL_PATH", value=model_path),
             gz_sim,
             bridge,
             spawn_robot,

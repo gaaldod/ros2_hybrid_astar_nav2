@@ -1,0 +1,146 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="warehouse_lightweight_gz">
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors"/>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
+
+    <gravity>0 0 -9.81</gravity>
+    <physics type="ode" name="ode_physics">
+      <max_step_size>0.002</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>500</real_time_update_rate>
+    </physics>
+
+    <scene>
+      <ambient>0.5 0.5 0.5 1.0</ambient>
+      <background>0.85 0.85 0.85 1.0</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>50 50 0.1</size></box>
+          </geometry>
+          <pose>0 0 -0.05 0 0 0</pose>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>50 50 0.1</size></box>
+          </geometry>
+          <pose>0 0 -0.05 0 0 0</pose>
+          <material>
+            <ambient>0.55 0.55 0.55 1.0</ambient>
+            <diffuse>0.55 0.55 0.55 1.0</diffuse>
+            <specular>0.0 0.0 0.0 1.0</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <light name="sun_like" type="directional">
+      <pose>0 0 12 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1.0</diffuse>
+      <specular>0.1 0.1 0.1 1.0</specular>
+      <direction>-0.2 0.1 -1.0</direction>
+      <cast_shadows>false</cast_shadows>
+    </light>
+
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 10 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>22 0.3 2.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>22 0.3 2.0</size></box></geometry><material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -10 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>22 0.3 2.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>22 0.3 2.0</size></box></geometry><material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-10 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 20 2.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.3 20 2.0</size></box></geometry><material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="wall_east">
+      <static>true</static>
+      <pose>10 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 20 2.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.3 20 2.0</size></box></geometry><material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="shelf_row_1">
+      <static>true</static>
+      <pose>-3.0 -2.5 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.2 7.0 1.5</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.2 7.0 1.5</size></box></geometry><material><ambient>0.35 0.35 0.35 1</ambient><diffuse>0.35 0.35 0.35 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="shelf_row_2">
+      <static>true</static>
+      <pose>2.0 1.5 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.2 7.0 1.5</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.2 7.0 1.5</size></box></geometry><material><ambient>0.35 0.35 0.35 1</ambient><diffuse>0.35 0.35 0.35 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="moving_center_box">
+      <static>false</static>
+      <allow_auto_disable>false</allow_auto_disable>
+      <pose>0.0 8.0 0.45 0 0 0</pose>
+      <link name="base_link">
+        <inertial>
+          <mass>12.0</mass>
+          <inertia>
+            <ixx>0.50</ixx>
+            <iyy>0.50</iyy>
+            <izz>0.50</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box><size>0.9 0.9 0.9</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.9 0.9 0.9</size></box>
+          </geometry>
+          <material>
+            <ambient>0.85 0.15 0.15 1</ambient>
+            <diffuse>0.85 0.15 0.15 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <plugin
+        filename="ignition-gazebo-trajectory-follower-system"
+        name="ignition::gazebo::systems::TrajectoryFollower">
+        <link_name>base_link</link_name>
+        <loop>true</loop>
+        <waypoints>
+          <waypoint>0.0 8.0</waypoint>
+          <waypoint>0.0 -8.0</waypoint>
+        </waypoints>
+      </plugin>
+    </model>
+  </world>
+</sdf>

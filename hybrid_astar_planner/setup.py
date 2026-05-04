@@ -24,20 +24,38 @@ setup(
                 "launch/demo_planner.launch.py",
                 "launch/gz_sim_roboworks.launch.py",
                 "launch/nav2_hybrid_astar_bringup.launch.py",
+                "launch/nav2_bringup_no_planner.launch.py",
+                "launch/nav2_navigation_no_planner.launch.py",
+                "launch/mock_tf_tree.launch.py",
+                "launch/delivery_stack.launch.py",
+                "launch/gazebo_classic_warehouse.launch.py",
+                "launch/gz_modern_nav2_corner_test.launch.py",
+                "launch/gz_modern_nav2_corner_test_withRRP.launch.py",
             ],
         ),
         ("share/" + package_name + "/config", ["config/nav2_roboworks_minimal.yaml"]),
-        ("share/" + package_name + "/rviz", ["rviz/hybrid_astar_demo.rviz"]),
-        # Simulation assets (SDF model, meshes, bridge config).
-        ("share/" + package_name + "/sim", ["../sim/bridge_minimal.yaml"]),
         (
-            "share/" + package_name + "/sim/roboworks_model/roboworks",
-            ["../sim/roboworks_model/roboworks/model.sdf", "../sim/roboworks_model/roboworks/model.config"],
+            "share/" + package_name + "/rviz",
+            ["rviz/hybrid_astar_demo.rviz", "rviz/nav2_delivery_debug.rviz"],
         ),
         (
-            "share/" + package_name + "/sim/roboworks_model/roboworks/meshes",
-            _collect_files("../sim/roboworks_model/roboworks/meshes"),
+            "share/" + package_name + "/scripts",
+            [
+                "scripts/clean_start.sh",
+                "scripts/start_corner_test.sh",
+                "scripts/send_corner_goal.sh",
+            ],
         ),
+        ("share/" + package_name + "/maps", ["maps/empty_map.yaml", "maps/empty_map.pgm"]),
+        (
+            "share/" + package_name + "/maps",
+            ["maps/warehouse_lightweight_map.yaml", "maps/warehouse_lightweight_map.pgm"],
+        ),
+    # Simulation assets (SDF model, meshes).
+    # Collect files from the repository's sim/ directory if present. Using
+    # _collect_files avoids referencing build/ paths or non-existent files.
+    # Install under share/<package>/sim with repository-relative paths.
+    ("share/" + package_name + "/sim", _collect_files("sim")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -50,6 +68,19 @@ setup(
         "console_scripts": [
             "hybrid_astar_planner_node = hybrid_astar_planner.planner_node:main",
             "nav2_hybrid_astar_server = hybrid_astar_planner.nav2_hybrid_astar_server:main",
+            "sensor_processor_node = hybrid_astar_planner.sensor_processor_node:main",
+            "obstacle_tracker_node = hybrid_astar_planner.obstacle_tracker_node:main",
+            "local_planner_node = hybrid_astar_planner.local_planner_node:main",
+            "ackermann_safety_controller_node = hybrid_astar_planner.ackermann_safety_controller_node:main",
+            "moving_obstacles_node = hybrid_astar_planner.moving_obstacles_node:main",
+            "odom_tf_bridge_node = hybrid_astar_planner.odom_tf_bridge_node:main",
+            "initial_pose_seed_node = hybrid_astar_planner.initial_pose_seed_node:main",
+            "global_costmap_compat_node = hybrid_astar_planner.global_costmap_compat_node:main",
+            "motion_reason_listener = hybrid_astar_planner.motion_reason_listener:main",
+            "tf_event_logger_node = hybrid_astar_planner.tf_event_logger_node:main",
+            "anchor_frame_guard_node = hybrid_astar_planner.anchor_frame_guard_node:main",
+            "reverse_recovery_node = hybrid_astar_planner.reverse_recovery_node:main",
+            "replan_watchdog_node = hybrid_astar_planner.replan_watchdog_node:main",
         ],
     },
 )

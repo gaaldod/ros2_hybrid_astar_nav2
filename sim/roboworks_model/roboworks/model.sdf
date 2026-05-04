@@ -559,8 +559,12 @@
         <wheel_base>0.262</wheel_base>
         <wheel_separation>0.3187</wheel_separation>
         <wheel_radius>0.0625</wheel_radius>
-        <odom_publish_frequency>1</odom_publish_frequency>
-        <topic>roboworks/cmd_vel</topic>
+        <!-- Was 1 Hz: too sparse for TF2 / AMCL / RViz; looks like pose "teleports" through obstacles. -->
+        <odom_publish_frequency>50</odom_publish_frequency>
+        <!-- Do NOT set <topic> to a short name like roboworks/cmd_vel: gz-sim uses that string
+             as the subscription topic as-is, which does NOT match ros_gz_bridge publishing to
+             /model/roboworks/cmd_vel — the vehicle never receives Twist, odometry stays at origin.
+             Omit <topic> so the plugin defaults to /model/<spawn_name>/cmd_vel (see gz-sim AckermannSteering). -->
         <min_velocity>-2</min_velocity>
         <max_velocity>2</max_velocity>
         <min_acceleration>-0.1</min_acceleration>

@@ -11,8 +11,8 @@ from .types import GridInfo, PlanResult, Pose2D
 
 @dataclass(frozen=True)
 class MotionPrimitive:
-    step: float
-    steering: float
+    distance: float
+    delta_yaw: float
     reverse: bool
 
 
@@ -26,6 +26,7 @@ class SearchState:
     heuristic: float
     parent: Optional[int]
     grid_index: GridIndex
+    primitive_index: int = -1
 
     @property
     def total_score(self) -> float:
@@ -45,44 +46,62 @@ class HybridAStarPlanner:
         grid_info: GridInfo,
         occupancy: List[int],
         *,
-        step_length: float = 0.5,
-        steering_angle_deg: float = 30.0,
-        steering_samples: int = 3,
+        step_length: float = 0.75,
+        angle_quantization_bins: int = 72,
         allow_reverse: bool = True,
-        min_turning_radius: float = 2.0,
+        minimum_turning_radius: float = 1.35,
+        allow_primitive_interpolation: bool = True,
         collision_radius: float = 0.35,
-        heuristic_weight: float = 1.2,
+        heuristic_weight: float = 1.1,
+        reverse_penalty: float = 2.0,
+        non_straight_penalty: float = 1.2,
+        direction_change_penalty: float = 0.3,
+        steering_change_penalty: float = 0.1,
+        treat_unknown_as_occupied: bool = False,
     ) -> None:
         self._grid_info = grid_info
         self._map = OccupancyGridMap(grid_info, occupancy)
-        self._step_length = step_length
-        self._steering_angle = math.radians(steering_angle_deg)
-        self._steering_samples = max(1, steering_samples)
+        self._step_length = max(step_length, grid_info.resolution)
+        self._angle_bins = max(16, angle_quantization_bins)
+        self._bin_size = 2.0 * math.pi / float(self._angle_bins)
         self._allow_reverse = allow_reverse
-        self._min_turning_radius = min_turning_radius
+        self._min_turning_radius = max(0.05, minimum_turning_radius)
+        self._allow_primitive_interpolation = allow_primitive_interpolation
         self._collision_radius = collision_radius
         self._heuristic_weight = heuristic_weight
+        self._reverse_penalty = max(1.0, reverse_penalty)
+        self._non_straight_penalty = max(1.0, non_straight_penalty)
+        self._direction_change_penalty = max(0.0, direction_change_penalty)
+        self._steering_change_penalty = max(0.0, steering_change_penalty)
+        self._treat_unknown_as_occupied = bool(treat_unknown_as_occupied)
 
         self._primitives = self._build_motion_primitives()
 
     def _build_motion_primitives(self) -> List[MotionPrimitive]:
         primitives: List[MotionPrimitive] = []
-        if self._steering_samples == 1:
-            steering_values = [0.0]
-        else:
-            steering_values = []
-            for i in range(self._steering_samples):
-                t = i / (self._steering_samples - 1)
-                angle = -self._steering_angle + 2.0 * self._steering_angle * t
-                steering_values.append(angle)
+        chord = max(self._step_length, math.sqrt(2.0) * self._grid_info.resolution)
+        ratio = max(-1.0, min(1.0, chord / (2.0 * self._min_turning_radius)))
+        min_heading_change = 2.0 * math.asin(ratio)
+        increments = max(1, int(math.ceil(min_heading_change / self._bin_size)))
+        turn_increments = [increments]
+        if self._allow_primitive_interpolation and increments > 1:
+            turn_increments = list(range(1, increments + 1))
 
-        directions = [1]
+        # Straight primitive.
+        primitives.append(MotionPrimitive(distance=self._step_length, delta_yaw=0.0, reverse=False))
         if self._allow_reverse:
-            directions.append(-1)
+            primitives.append(MotionPrimitive(distance=self._step_length, delta_yaw=0.0, reverse=True))
 
-        for d in directions:
-            for angle in steering_values:
-                primitives.append(MotionPrimitive(step=self._step_length, steering=angle, reverse=(d < 0)))
+        # Arc primitives using quantized heading deltas.
+        for k in turn_increments:
+            delta = k * self._bin_size
+            arc_length = self._min_turning_radius * abs(delta)
+            arc_length = max(arc_length, self._step_length)
+            primitives.append(MotionPrimitive(distance=arc_length, delta_yaw=delta, reverse=False))
+            primitives.append(MotionPrimitive(distance=arc_length, delta_yaw=-delta, reverse=False))
+            if self._allow_reverse:
+                primitives.append(MotionPrimitive(distance=arc_length, delta_yaw=delta, reverse=True))
+                primitives.append(MotionPrimitive(distance=arc_length, delta_yaw=-delta, reverse=True))
         return primitives
 
     def _pose_to_grid(self, pose: Pose2D) -> GridIndex:
@@ -112,21 +131,57 @@ class HybridAStarPlanner:
                 nidx = GridIndex(ix=idx.ix + dx, iy=idx.iy + dy)
                 if not self._map.in_bounds(nidx):
                     return False
-                if self._map.is_occupied(nidx, treat_unknown_as_occupied=True):
+                if self._map.is_occupied(
+                    nidx, treat_unknown_as_occupied=self._treat_unknown_as_occupied
+                ):
                     return False
         return True
 
+    def _primitive_rollout(
+        self, state: SearchState, primitive: MotionPrimitive
+    ) -> tuple[float, float, float, float]:
+        direction = -1.0 if primitive.reverse else 1.0
+        distance_signed = primitive.distance * direction
+        delta_yaw_signed = primitive.delta_yaw * direction
+
+        if abs(delta_yaw_signed) < 1e-9:
+            dx_body = distance_signed
+            dy_body = 0.0
+        else:
+            radius = distance_signed / delta_yaw_signed
+            dx_body = radius * math.sin(delta_yaw_signed)
+            dy_body = radius * (1.0 - math.cos(delta_yaw_signed))
+
+        c = math.cos(state.yaw)
+        s = math.sin(state.yaw)
+        new_x = state.x + c * dx_body - s * dy_body
+        new_y = state.y + s * dx_body + c * dy_body
+        new_yaw = self._normalize_angle(state.yaw + delta_yaw_signed)
+        return new_x, new_y, new_yaw, abs(distance_signed)
+
+    def _segment_collision_free(
+        self, state: SearchState, primitive: MotionPrimitive, sample_ds: float = 0.2
+    ) -> bool:
+        samples = max(1, int(math.ceil(primitive.distance / max(sample_ds, 1e-3))))
+        for i in range(1, samples + 1):
+            frac = i / float(samples)
+            partial = MotionPrimitive(
+                distance=primitive.distance * frac,
+                delta_yaw=primitive.delta_yaw * frac,
+                reverse=primitive.reverse,
+            )
+            x, y, _, _ = self._primitive_rollout(state, partial)
+            if not self._collision_free(x, y):
+                return False
+        return True
+
     def _heuristic(self, pose: Pose2D, goal: Pose2D) -> float:
-        # Admissible if heuristic_weight == 1.0, slightly inflated otherwise.
         dx = goal.x - pose.x
         dy = goal.y - pose.y
         distance = math.hypot(dx, dy)
-
         yaw_diff = abs(self._normalize_angle(goal.yaw - pose.yaw))
-
-        # Approximate extra cost due to turning and orientation
-        turning_penalty = self._min_turning_radius * yaw_diff
-        return self._heuristic_weight * (distance + 0.1 * turning_penalty)
+        turning_cost = self._min_turning_radius * yaw_diff
+        return self._heuristic_weight * (distance + turning_cost)
 
     def _expand(
         self,
@@ -135,26 +190,25 @@ class HybridAStarPlanner:
         pos_tol: float,
         yaw_tol: float,
     ) -> Iterable[Tuple[SearchState, Pose2D]]:
-        for primitive in self._primitives:
-            direction = -1 if primitive.reverse else 1
-
-            # Bicycle-model like forward integration
-            step = primitive.step * direction
-            yaw_change = step * math.tan(primitive.steering) / max(self._min_turning_radius, 1e-3)
-            new_yaw = self._normalize_angle(state.yaw + yaw_change)
-            new_x = state.x + step * math.cos(new_yaw)
-            new_y = state.y + step * math.sin(new_yaw)
-
-            if not self._collision_free(new_x, new_y):
+        for primitive_index, primitive in enumerate(self._primitives):
+            if not self._segment_collision_free(state, primitive):
                 continue
 
+            direction = -1 if primitive.reverse else 1
+            new_x, new_y, new_yaw, travel_distance = self._primitive_rollout(state, primitive)
             grid_index = self._map.world_to_grid(new_x, new_y)
 
-            # Accumulate cost; reverse and steering incur mild penalties
-            translation_cost = abs(step)
-            steering_cost = 0.1 * abs(primitive.steering)
-            reverse_cost = 0.5 if primitive.reverse else 0.0
-            delta_cost = translation_cost + steering_cost + reverse_cost
+            primitive_cost = travel_distance
+            if abs(primitive.delta_yaw) > 1e-6:
+                primitive_cost *= self._non_straight_penalty
+            if primitive.reverse:
+                primitive_cost *= self._reverse_penalty
+            if state.direction != direction:
+                primitive_cost += self._direction_change_penalty
+            if state.primitive_index >= 0:
+                prev = self._primitives[state.primitive_index]
+                steering_change = abs(prev.delta_yaw - primitive.delta_yaw)
+                primitive_cost += self._steering_change_penalty * steering_change
 
             pose = Pose2D(x=new_x, y=new_y, yaw=new_yaw)
             is_goal = self._is_goal_reached(pose, goal, pos_tol, yaw_tol)
@@ -164,10 +218,11 @@ class HybridAStarPlanner:
                 y=new_y,
                 yaw=new_yaw,
                 direction=direction,
-                cost_so_far=state.cost_so_far + delta_cost,
+                cost_so_far=state.cost_so_far + primitive_cost,
                 heuristic=self._heuristic(pose, goal),
                 parent=None,  # set later
                 grid_index=grid_index,
+                primitive_index=primitive_index,
             )
             yield new_state, pose, is_goal
 
@@ -204,6 +259,7 @@ class HybridAStarPlanner:
             heuristic=self._heuristic(start, goal),
             parent=None,
             grid_index=start_idx,
+            primitive_index=-1,
         )
         states.append(start_state)
         came_from.append(None)
@@ -211,8 +267,10 @@ class HybridAStarPlanner:
         heapq.heappush(open_heap, (start_state.total_score, 0))
 
         def discrete_key(s: SearchState) -> Tuple[int, int, int]:
-            yaw_bin = int(round(self._normalize_angle(s.yaw) / math.radians(10.0)))
-            return s.grid_index.ix, s.grid_index.iy, yaw_bin
+            yaw_norm = (self._normalize_angle(s.yaw) + 2.0 * math.pi) % (2.0 * math.pi)
+            yaw_bin = int(round(yaw_norm / self._bin_size)) % self._angle_bins
+            dir_bin = 1 if s.direction > 0 else 0
+            return s.grid_index.ix, s.grid_index.iy, yaw_bin * 2 + dir_bin
 
         visited_cost[discrete_key(start_state)] = 0.0
 
