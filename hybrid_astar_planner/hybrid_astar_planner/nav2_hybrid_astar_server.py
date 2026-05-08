@@ -82,7 +82,7 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("angle_quantization_bins", 72)
         self.declare_parameter("allow_primitive_interpolation", True)
         self.declare_parameter("reverse_penalty", 2.0)
-        self.declare_parameter("non_straight_penalty", 1.2)
+        self.declare_parameter("non_straight_penalty", 0.6)
         self.declare_parameter("direction_change_penalty", 0.3)
         self.declare_parameter("steering_change_penalty", 0.1)
         self.declare_parameter("planner_max_iterations", 25000)
@@ -103,7 +103,7 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("live_obstacle_cloud_topic", "tracked_obstacles_cloud")
         self.declare_parameter("live_obstacle_cloud_timeout_sec", 1.5)
         self.declare_parameter("live_obstacle_inflation_radius_m", 0.8)
-        self.declare_parameter("live_obstacle_ignore_near_start_m", 1.2)
+        self.declare_parameter("live_obstacle_ignore_near_start_m", 0.8)
         self.declare_parameter("path_hold_enabled", True)
         self.declare_parameter("path_hold_goal_tolerance_m", 0.6)
         self.declare_parameter("path_hold_goal_tolerance_yaw_rad", 0.6)
@@ -193,6 +193,12 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("localization_reseed_initialpose_topic", "/initialpose")
         self.declare_parameter("localization_reseed_use_startup_yaw", True)
         self.declare_parameter("localization_reseed_require_stable_sec", 0.8)
+
+    # Replan request topic and in-progress indicator
+    self.declare_parameter("request_replan_topic", "nav_request_replan")
+    self.declare_parameter("replan_in_progress_topic", "nav_replan_in_progress")
+    self.declare_parameter("replan_quick_timeout_sec", 2.0)
+    self.declare_parameter("replan_rate_limit_s", 2.0)
 
         map_topic = self.get_parameter("map_topic").value
         self._global_frame = self.get_parameter("global_frame").value
@@ -536,6 +542,15 @@ class Nav2HybridAStarServer(Node):
             Bool, self._localization_jump_emergency_stop_topic, 10
         )
 
+        # Replan request / progress topics
+        self._request_replan_topic = str(self.get_parameter("request_replan_topic").value)
+        self._replan_in_progress_topic = str(self.get_parameter("replan_in_progress_topic").value)
+        self._replan_quick_timeout_sec = float(self.get_parameter("replan_quick_timeout_sec").value)
+        self._replan_rate_limit_s = float(self.get_parameter("replan_rate_limit_s").value)
+        self._last_replan_request_time = 0.0
+        self._replan_in_progress_pub = self.create_publisher(Bool, self._replan_in_progress_topic, 1)
+        self.create_subscription(Bool, self._request_replan_topic, self._on_replan_request, 10)
+
         # Use a larger TF cache to tolerate small timing skews between
         # simulated /clock, odometry, and sensor message stamps.
         self._tf_buffer = Buffer(cache_time=Duration(seconds=30.0))
@@ -617,6 +632,104 @@ class Nav2HybridAStarServer(Node):
                 best_d2 = d2
                 best_i = i
         return best_i
+
+    def _on_replan_request(self, msg: Bool) -> None:
+        try:
+            if not msg.data:
+                return
+        except Exception:
+            # non-bool payloads are ignored
+            return
+        now = time.perf_counter()
+        if (now - self._last_replan_request_time) < self._replan_rate_limit_s:
+            return
+        self._last_replan_request_time = now
+        # Fire off a quick replan attempt in a background thread to avoid blocking subscriptions
+        def _bg():
+            self._publish_replan_in_progress(True)
+            try:
+                self._attempt_quick_replan()
+            finally:
+                self._publish_replan_in_progress(False)
+
+        try:
+            threading.Thread(target=_bg, name="quick_replan", daemon=True).start()
+        except Exception as ex:
+            self.get_logger().error(f"failed to start quick replan thread: {ex}")
+
+    def _publish_replan_in_progress(self, val: bool) -> None:
+        try:
+            msg = Bool()
+            msg.data = val
+            self._replan_in_progress_pub.publish(msg)
+            # Small console logs to indicate replan takeover and release
+            if val:
+                self.get_logger().info(
+                    "Replan started: planner has taken over (nav_replan_in_progress=True)"
+                )
+            else:
+                self.get_logger().info(
+                    "Replan finished: planner has given control back (nav_replan_in_progress=False)"
+                )
+        except Exception:
+            pass
+
+    def _attempt_quick_replan(self) -> None:
+        """Attempt a short, focused replan to the current goal using a reduced timeout.
+
+        This function is best-effort: it will publish a new global path if a viable
+        plan is found. It respects the same live-obstacle checks as the main action
+        server but uses a smaller timeout and is rate-limited by the caller.
+        """
+        # Require a valid map and a recent global goal
+        if self._map is None or self._map_wrapper is None:
+            return
+        if self._last_valid_goal is None:
+            return
+        # Obtain robot pose
+        start_ps = self._get_robot_pose()
+        if start_ps is None:
+            return
+        start_raw = _pose_to_pose2d(start_ps)
+        target_raw = self._last_valid_goal
+        # Build planner and map snapshot
+        base_map_data = list(self._map.data)
+        self._apply_static_inflation_to_data(
+            base_map_data, inflation_radius_m=self._planning_grid_static_inflation_radius_m
+        )
+        self._apply_wall_memory_to_data(base_map_data)
+        # Apply live obstacles with the configured inflation
+        map_data = list(base_map_data)
+        self._apply_live_obstacles_to_data(
+            map_data, inflation_radius_m=self._live_obstacle_inflation_radius_m, start_pose=start_raw
+        )
+        start, target = self._adapt_start_and_target(start_raw, target_raw, map_data)
+        planner = HybridAStarPlanner(self._map_wrapper.info, map_data, **self._planner_cfg)
+        # Try to acquire planning lock briefly
+        acquired = self._planning_lock.acquire(timeout=min(0.1, self._replan_quick_timeout_sec))
+        if not acquired:
+            return
+        try:
+            future = self._planner_pool.submit(
+                planner.plan, start, target, max_iterations=self._planner_max_iterations
+            )
+            try:
+                plan = future.result(timeout=self._replan_quick_timeout_sec)
+            except FutureTimeoutError:
+                future.cancel()
+                return
+        finally:
+            self._planning_lock.release()
+        if not plan or not plan.path:
+            return
+        # Validate plan against live obstacles and grid segments
+        live_ok = self._path_respects_live_clearance(plan.path, start_pose=start_raw)
+        seg_ok = self._path_segments_clear_in_grid(plan.path, map_data, start_pose=start_raw)
+        if not (live_ok and seg_ok):
+            return
+        # Publish the new path as the planned path so downstream components pick it up
+        path_msg = self._plan_to_path_msg(plan.path)
+        self._path_pub.publish(path_msg)
 
     def _nearest_ahead_path_index(self, path_msg: Path, start: Pose2D) -> int:
         # Prefer points that are in front of the robot heading to keep

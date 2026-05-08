@@ -82,8 +82,8 @@ def _nav2_param_rewrites(spawn_x: str, spawn_y: str, smac_min_turning_radius: st
         "planner_server.ros__parameters.GridBased.minimum_turning_radius": smac_min_turning_radius,
         "planner_server.ros__parameters.GridBased.angle_quantization_bins": "72",
         "planner_server.ros__parameters.GridBased.reverse_penalty": "4.0",
-        "planner_server.ros__parameters.GridBased.change_penalty": "0.2",
-        "planner_server.ros__parameters.GridBased.non_straight_penalty": "1.3",
+    "planner_server.ros__parameters.GridBased.change_penalty": "0.2",
+    "planner_server.ros__parameters.GridBased.non_straight_penalty": "0.6",
         "planner_server.ros__parameters.GridBased.cost_penalty": "2.0",
         "planner_server.ros__parameters.GridBased.allow_unknown": "true",
         # Global costmap: lower rate saves CPU; local stays responsive
@@ -167,8 +167,8 @@ def _launch_setup(context, *args, **kwargs):
                 # Keep planner search bounded to avoid compute_path timeouts.
                 "angle_quantization_bins": 72,
                 "allow_primitive_interpolation": False,
-                "reverse_penalty": 1.2,
-                "non_straight_penalty": 1.2,
+                "reverse_penalty": 0.9,
+                "non_straight_penalty": 0.6,
                 "direction_change_penalty": 0.3,
                 "steering_change_penalty": 0.1,
                 "planner_max_iterations": 12000,
