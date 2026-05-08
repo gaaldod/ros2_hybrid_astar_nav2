@@ -123,13 +123,13 @@ class LocalPlannerNode(Node):
         self.declare_parameter("emergency_trigger_ticks", 3)
         self.declare_parameter("emergency_release_clearance", 0.22)
         self.declare_parameter("cloud_flush_interval", 0.5)
-    # Replan request / in-progress handling to slow robot while planner replans
-    self.declare_parameter("request_replan_topic", "nav_request_replan")
-    self.declare_parameter("replan_in_progress_topic", "nav_replan_in_progress")
-    self.declare_parameter("replan_request_clearance", 0.0)
-    self.declare_parameter("replan_debounce_ticks", 2)
-    self.declare_parameter("replan_rate_limit_s", 2.0)
-    self.declare_parameter("replan_speed_floor", 0.4)
+        # Replan request / in-progress handling to slow robot while planner replans
+        self.declare_parameter("request_replan_topic", "nav_request_replan")
+        self.declare_parameter("replan_in_progress_topic", "nav_replan_in_progress")
+        self.declare_parameter("replan_request_clearance", 0.0)
+        self.declare_parameter("replan_debounce_ticks", 2)
+        self.declare_parameter("replan_rate_limit_s", 2.0)
+        self.declare_parameter("replan_speed_floor", 0.4)
 
         self._global_frame = self.get_parameter("global_frame").get_parameter_value().string_value
         self._horizon = max(0.0, self.get_parameter("prediction_horizon").get_parameter_value().double_value)
@@ -164,16 +164,16 @@ class LocalPlannerNode(Node):
         scale_topic = self.get_parameter("speed_scale_topic").get_parameter_value().string_value
         emerg_topic = self.get_parameter("emergency_stop_topic").get_parameter_value().string_value
 
-    # Replan topics and state
-    self._request_replan_topic = self.get_parameter("request_replan_topic").get_parameter_value().string_value
-    self._replan_in_progress_topic = self.get_parameter("replan_in_progress_topic").get_parameter_value().string_value
-    self._replan_request_clearance = float(self.get_parameter("replan_request_clearance").get_parameter_value().double_value)
-    self._replan_debounce_ticks = int(self.get_parameter("replan_debounce_ticks").get_parameter_value().integer_value)
-    self._replan_rate_limit_s = float(self.get_parameter("replan_rate_limit_s").get_parameter_value().double_value)
-    self._replan_speed_floor = float(self.get_parameter("replan_speed_floor").get_parameter_value().double_value)
-    self._replan_debounce = 0
-    self._last_replan_request_time = 0.0
-    self._replan_in_progress = False
+        # Replan topics and state
+        self._request_replan_topic = self.get_parameter("request_replan_topic").get_parameter_value().string_value
+        self._replan_in_progress_topic = self.get_parameter("replan_in_progress_topic").get_parameter_value().string_value
+        self._replan_request_clearance = float(self.get_parameter("replan_request_clearance").get_parameter_value().double_value)
+        self._replan_debounce_ticks = int(self.get_parameter("replan_debounce_ticks").get_parameter_value().integer_value)
+        self._replan_rate_limit_s = float(self.get_parameter("replan_rate_limit_s").get_parameter_value().double_value)
+        self._replan_speed_floor = float(self.get_parameter("replan_speed_floor").get_parameter_value().double_value)
+        self._replan_debounce = 0
+        self._last_replan_request_time = 0.0
+        self._replan_in_progress = False
 
         self._latest_path: Optional[Path] = None
         self._latest_tracks: Optional[ObstacleTrackArray] = None
@@ -184,9 +184,9 @@ class LocalPlannerNode(Node):
         self._pub_cloud = self.create_publisher(PointCloud2, cloud_topic, 10)
         self._pub_scale = self.create_publisher(Float32, scale_topic, 10)
         self._pub_emerg = self.create_publisher(Bool, emerg_topic, 10)
-    self._pub_request_replan = self.create_publisher(Bool, self._request_replan_topic, 1)
-    # subscribe to replan in-progress flag so we can reduce speed while planner works
-    self.create_subscription(Bool, self._replan_in_progress_topic, self._on_replan_in_progress, 10)
+        self._pub_request_replan = self.create_publisher(Bool, self._request_replan_topic, 1)
+        # subscribe to replan in-progress flag so we can reduce speed while planner works
+        self.create_subscription(Bool, self._replan_in_progress_topic, self._on_replan_in_progress, 10)
 
         self._timer = self.create_timer(0.05, self._tick)
         self._last_flush_walltime = 0.0

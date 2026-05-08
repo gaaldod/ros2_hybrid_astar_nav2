@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from rclpy.node import Node
 
@@ -16,7 +17,8 @@ class InitialPoseSeedNode(Node):
         self.declare_parameter("pose_y", -8.0)
         self.declare_parameter("pose_yaw", 0.0)
         self.declare_parameter("publish_count", 20)
-        self.declare_parameter("publish_period_s", 1.0)
+        # Publish initial pose less frequently to avoid TF extrapolation warnings
+        self.declare_parameter("publish_period_s", 2.0)
 
         self._pose_x = float(self.get_parameter("pose_x").value)
         self._pose_y = float(self.get_parameter("pose_y").value)
@@ -58,7 +60,19 @@ def main(args: list[str] | None = None) -> None:
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        # Allow Ctrl-C during local testing
+        pass
+    except ExternalShutdownException:
+        # External ROS shutdown requested (e.g., from a launch manager)
+        # Treat this as a clean shutdown, do not propagate the exception.
         pass
     finally:
-        if rclpy.ok():
+        # Attempt best-effort cleanup.
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+        try:
             rclpy.shutdown()
+        except Exception:
+            pass

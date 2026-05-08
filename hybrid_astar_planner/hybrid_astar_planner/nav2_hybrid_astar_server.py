@@ -112,7 +112,9 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("path_hold_cloud_block_min_drift_m", 0.7)
         self.declare_parameter("path_live_obstacle_min_clearance_m", 1.0)
         self.declare_parameter("path_live_obstacle_soft_accept_min_clearance_m", 0.45)
-        self.declare_parameter("path_clearance_retry_count", 2)
+        # Allow an extra retry for clearance-checked plans to give the planner
+        # more chance to find a valid route when overlays are active.
+        self.declare_parameter("path_clearance_retry_count", 3)
         self.declare_parameter("path_clearance_retry_inflation_step_m", 0.3)
         self.declare_parameter("path_none_retry_relax_live_overlay", True)
         self.declare_parameter("path_none_retry_min_inflation_m", 0.35)
@@ -142,7 +144,8 @@ class Nav2HybridAStarServer(Node):
         # Local takeover mode: when global path is good but obstacle appears ahead,
         # publish short-horizon micro-paths at a fixed rate until rejoined.
         self.declare_parameter("local_takeover_enabled", True)
-        self.declare_parameter("local_takeover_rate_hz", 2.5)
+        # Reduce local takeover frequency to lower CPU/lock contention during heavy planning.
+        self.declare_parameter("local_takeover_rate_hz", 1.0)
         self.declare_parameter("local_takeover_trigger_obstacle_ahead_radius_m", 2.5)
         self.declare_parameter("local_takeover_path_proximity_m", 1.5)
         self.declare_parameter("local_takeover_min_drift_without_collision_hint_m", 0.6)
@@ -194,11 +197,16 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("localization_reseed_use_startup_yaw", True)
         self.declare_parameter("localization_reseed_require_stable_sec", 0.8)
 
-    # Replan request topic and in-progress indicator
-    self.declare_parameter("request_replan_topic", "nav_request_replan")
-    self.declare_parameter("replan_in_progress_topic", "nav_replan_in_progress")
-    self.declare_parameter("replan_quick_timeout_sec", 2.0)
-    self.declare_parameter("replan_rate_limit_s", 2.0)
+        # Replan request topic and in-progress indicator
+        self.declare_parameter("request_replan_topic", "nav_request_replan")
+        self.declare_parameter("replan_in_progress_topic", "nav_replan_in_progress")
+        # Allow more time for quick replans in complex scenes.
+        # Increased from 4.0s to 6.0s to give the planner extra time in complex maps.
+        self.declare_parameter("replan_quick_timeout_sec", 6.0)
+        # Rate-limit quick replans to avoid thrashing.
+        self.declare_parameter("replan_rate_limit_s", 3.0)
+        # Minimum time after a quick replan finishes before considering reusing a held path.
+        self.declare_parameter("post_replan_holdoff_s", 2.5)
 
         map_topic = self.get_parameter("map_topic").value
         self._global_frame = self.get_parameter("global_frame").value
@@ -548,8 +556,16 @@ class Nav2HybridAStarServer(Node):
         self._replan_quick_timeout_sec = float(self.get_parameter("replan_quick_timeout_sec").value)
         self._replan_rate_limit_s = float(self.get_parameter("replan_rate_limit_s").value)
         self._last_replan_request_time = 0.0
+        # Internal flag to track whether a quick replan is active. This
+        # prevents immediately reusing a held global path while a replanning
+        # attempt is ongoing (avoids the robot oscillating between local
+        # takeover and a stale global path).
+        self._replan_in_progress_state = False
         self._replan_in_progress_pub = self.create_publisher(Bool, self._replan_in_progress_topic, 1)
         self.create_subscription(Bool, self._request_replan_topic, self._on_replan_request, 10)
+        # Holdoff after replan finishes before allowing held-path reuse
+        self._post_replan_holdoff_s = float(self.get_parameter("post_replan_holdoff_s").value)
+        self._last_replan_finish_walltime = 0.0
 
         # Use a larger TF cache to tolerate small timing skews between
         # simulated /clock, odometry, and sensor message stamps.
@@ -661,6 +677,9 @@ class Nav2HybridAStarServer(Node):
         try:
             msg = Bool()
             msg.data = val
+            # Update our internal state first so local decision logic can
+            # immediately reflect the current planner takeover state.
+            self._replan_in_progress_state = bool(val)
             self._replan_in_progress_pub.publish(msg)
             # Small console logs to indicate replan takeover and release
             if val:
@@ -671,6 +690,12 @@ class Nav2HybridAStarServer(Node):
                 self.get_logger().info(
                     "Replan finished: planner has given control back (nav_replan_in_progress=False)"
                 )
+                try:
+                    # record when the replan finished so we can enforce a short
+                    # holdoff before reusing any previously-held path
+                    self._last_replan_finish_walltime = time.perf_counter()
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -728,8 +753,20 @@ class Nav2HybridAStarServer(Node):
         if not (live_ok and seg_ok):
             return
         # Publish the new path as the planned path so downstream components pick it up
-        path_msg = self._plan_to_path_msg(plan.path)
-        self._path_pub.publish(path_msg)
+        # Use the existing _build_path_msg helper which accepts the full PlanResult.
+        path_msg = self._build_path_msg(plan, frame_id=self._global_frame)
+        if len(path_msg.poses) >= 2:
+            self._path_pub.publish(path_msg)
+            # Mirror the same bookkeeping we do for a full planning success so
+            # downstream components treat this quick replan as the current plan.
+            self._expansion_pub.publish(self._build_expansion_markers(plan, frame_id=self._global_frame))
+            self._last_valid_path_msg = path_msg
+            self._last_global_path_msg = path_msg
+            now = time.perf_counter()
+            self._last_global_path_walltime = now
+            self._last_valid_plan_cost = plan.cost
+            self._last_valid_plan_walltime = now
+            self._last_valid_goal = target_raw
 
     def _nearest_ahead_path_index(self, path_msg: Path, start: Pose2D) -> int:
         # Prefer points that are in front of the robot heading to keep
@@ -1823,6 +1860,15 @@ class Nav2HybridAStarServer(Node):
         self, goal_handle, start: Pose2D, target: Pose2D
     ) -> Optional[ComputePathToPose.Result]:
         if not self._path_hold_enabled:
+            return None
+        # If a quick replan is currently in progress, don't hold the last path
+        # — let the planner finish and publish a potentially-corrected path.
+        if getattr(self, "_replan_in_progress_state", False):
+            return None
+        # If we recently finished a quick replan, give downstream components a
+        # moment to accept and propagate any new path before we consider
+        # reusing an older held path.
+        if (time.perf_counter() - getattr(self, "_last_replan_finish_walltime", 0.0)) < self._post_replan_holdoff_s:
             return None
         if self._last_valid_path_msg is None:
             return None

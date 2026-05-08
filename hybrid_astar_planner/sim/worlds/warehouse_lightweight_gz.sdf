@@ -1,6 +1,6 @@
-<?xml version='1.0'?>
-<sdf version='1.7'>
-  <world name='warehouse_lightweight'>
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <world name="warehouse_lightweight">
     <include>
       <uri>model://sun</uri>
     </include>
@@ -11,67 +11,31 @@
     </include>
 
     <!-- A lightweight box model that will be driven by a trajectory plugin -->
-    <model name='moving_center_box'>
-      <static>false</static>
-      <link name='link'>
-        <pose>0 8 0.35 0 0 0</pose>
-        <collision name='collision'>
-          <geometry>
-            <box>
-              <size>0.5 0.5 0.5</size>
-            </box>
-          </geometry>
-        </collision>
-        <visual name='visual'>
-          <geometry>
-            <box>
-              <size>0.5 0.5 0.5</size>
-            </box>
-          </geometry>
-          <material>
-            <script>
-              <uri>file://media/materials/scripts/gazebo.material</uri>
-              <name>Gazebo/Red</name>
-            </script>
-          </material>
-        </visual>
-      </link>
-
-      <!-- A simple trajectory plugin using gazebo's actor-like approach -->
-      <plugin name='moving_center_box_trajectory' filename='libgazebo_ros_tracked_vehicle.so'>
-        <!-- The plugin here is just a placeholder; not all systems have this plugin installed.
-             Instead we will also add a simple <trajectory> element which modern gz supports via actor.
-        -->
-      </plugin>
-    </model>
-
-    <!-- Define a simple actor with a looping trajectory that moves between y=8 and y=-8 -->
-    <actor name='moving_center_box_actor'>
-      <pose>0 8 0.35 0 0 0</pose>
+    <actor name="moving_box">
+      <pose>0 0 0.35 0 0 0</pose>
       <skin>
         <filename>model://box/meshes/box.dae</filename>
+        <scale>1 1 1</scale>
       </skin>
-      <animation name='walk'>
-        <duration>8</duration>
-        <loop>true</loop>
-        <keyframe>
-          <time>0</time>
-          <pose>0 8 0.35 0 0 0</pose>
-        </keyframe>
-        <keyframe>
-          <time>4</time>
-          <pose>0 -8 0.35 0 0 0</pose>
-        </keyframe>
-        <keyframe>
-          <time>8</time>
-          <pose>0 8 0.35 0 0 0</pose>
-        </keyframe>
+      <animation name="move_y">
+        <interpolate_x>true</interpolate_x>
       </animation>
-      <plugin name='actor_controller' filename='libgazebo_ros_actor.so'>
-        <ros> 
-          <namespace>/</namespace>
-        </ros>
-      </plugin>
+      <script>
+        <trajectory id="0" type="walking">
+          <waypoint>
+            <time>0</time>
+            <pose>0 -8 0.35 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>32</time>
+            <pose>0 8 0.35 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>64</time>
+            <pose>0 -8 0.35 0 0 0</pose>
+          </waypoint>
+        </trajectory>
+      </script>
     </actor>
 
     <!-- lighting / physics tuned for lightweight sim -->
