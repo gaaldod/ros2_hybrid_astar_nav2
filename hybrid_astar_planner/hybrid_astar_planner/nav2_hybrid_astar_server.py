@@ -81,7 +81,7 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("allow_reverse", False)
         self.declare_parameter("angle_quantization_bins", 72)
         self.declare_parameter("allow_primitive_interpolation", True)
-        self.declare_parameter("reverse_penalty", 2.0)
+        self.declare_parameter("reverse_penalty", 1.2)
         self.declare_parameter("non_straight_penalty", 0.6)
         self.declare_parameter("direction_change_penalty", 0.3)
         self.declare_parameter("steering_change_penalty", 0.1)

@@ -53,7 +53,7 @@ class HybridAStarPlanner:
         allow_primitive_interpolation: bool = True,
         collision_radius: float = 0.35,
         heuristic_weight: float = 1.1,
-        reverse_penalty: float = 2.0,
+        reverse_penalty: float = 1.2,
         non_straight_penalty: float = 1.2,
         direction_change_penalty: float = 0.3,
         steering_change_penalty: float = 0.1,
