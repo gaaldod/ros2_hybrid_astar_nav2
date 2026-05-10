@@ -47,6 +47,11 @@ class HybridAStarPlannerNode(Node):
         self._plan_pub = self.create_publisher(Path, plan_topic, 10)
         self._expansion_pub = self.create_publisher(MarkerArray, expansions_topic, 10)
 
+        # Publisher for costmap overlay as MarkerArray (for RViz)
+        self._costmap_overlay_pub = self.create_publisher(MarkerArray, "costmap_overlay", 1)
+        # Timer to publish costmap overlay at low frequency (0.5 Hz)
+        self.create_timer(2.0, self._publish_costmap_overlay_timer)
+
         self._plan_srv = self.create_service(GetPlan, "hybrid_astar/make_plan", self._on_make_plan)
 
         self.get_logger().info(
@@ -67,6 +72,105 @@ class HybridAStarPlannerNode(Node):
         self.get_logger().info(
             f"Received map: {grid_info.width}x{grid_info.height}, resolution={grid_info.resolution:.3f}"
         )
+
+    def _publish_costmap_overlay_timer(self):
+        # Publish costmap overlay at a low frequency for RViz visuals
+        if self._map is not None:
+            self._publish_costmap_overlay(self._map.header)
+
+    def _publish_costmap_overlay(self, header):
+        if self._map_wrapper is None:
+            return
+        from visualization_msgs.msg import Marker, MarkerArray
+        markers = MarkerArray()
+        info = self._map_wrapper.info
+        width, height = info.width, info.height
+        res = info.resolution
+        ox, oy = info.origin_xy
+
+        # Clear previous markers for both namespaces
+        clear_pts = Marker()
+        clear_pts.header = header
+        clear_pts.ns = "costmap_points"
+        clear_pts.id = 0
+        clear_pts.action = Marker.DELETEALL
+        markers.markers.append(clear_pts)
+
+        clear_txt = Marker()
+        clear_txt.header = header
+        clear_txt.ns = "costmap_text"
+        clear_txt.id = 0
+        clear_txt.action = Marker.DELETEALL
+        markers.markers.append(clear_txt)
+
+        # Build a POINTS marker for fast, colored visualization of costs
+        pts = Marker()
+        pts.header = header
+        pts.ns = "costmap_points"
+        pts.id = 1
+        pts.type = Marker.POINTS
+        pts.action = Marker.ADD
+        # size each point roughly the size of a grid cell
+        pts.scale.x = res
+        pts.scale.y = res
+        pts.scale.z = 0.01
+        pts.color.a = 0.0
+
+        from geometry_msgs.msg import Point
+        from std_msgs.msg import ColorRGBA
+
+        # Only show non-free cells for clarity (cost > 0)
+        for iy in range(height):
+            for ix in range(width):
+                idx = iy * width + ix
+                cost = self._map_wrapper._data[idx]
+                if cost <= 0:
+                    continue
+                # position at cell center
+                p = Point()
+                p.x = ox + (ix + 0.5) * res
+                p.y = oy + (iy + 0.5) * res
+                p.z = 0.02
+                pts.points.append(p)
+                # color map: 1..100 -> green->red
+                norm = max(0.0, min(1.0, float(cost) / 100.0))
+                c = ColorRGBA()
+                c.r = norm
+                c.g = 1.0 - norm
+                c.b = 0.0
+                c.a = 0.8
+                pts.colors.append(c)
+
+        markers.markers.append(pts)
+
+        # Optionally also include text markers for small maps / presentations
+        # Keep them, but they can be visually noisy on large maps.
+        marker_id = 0
+        for iy in range(height):
+            for ix in range(width):
+                idx = iy * width + ix
+                cost = self._map_wrapper._data[idx]
+                if cost <= 0:
+                    continue
+                m = Marker()
+                m.header = header
+                m.ns = "costmap_text"
+                m.id = marker_id
+                marker_id += 1
+                m.type = Marker.TEXT_VIEW_FACING
+                m.action = Marker.ADD
+                m.scale.z = max(0.06, res * 0.5)  # text height scaled for resolution
+                m.color.r = 0.0
+                m.color.g = 0.0
+                m.color.b = 0.0
+                m.color.a = 0.9
+                m.pose.position.x = ox + (ix + 0.5) * res
+                m.pose.position.y = oy + (iy + 0.5) * res
+                m.pose.position.z = 0.05
+                m.text = str(cost)
+                markers.markers.append(m)
+
+        self._costmap_overlay_pub.publish(markers)
 
     def _on_make_plan(self, request: GetPlan.Request, response: GetPlan.Response) -> GetPlan.Response:
         if self._map is None or self._map_wrapper is None:

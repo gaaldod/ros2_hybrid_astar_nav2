@@ -37,9 +37,7 @@ def _nav2_param_rewrites(spawn_x: str, spawn_y: str, smac_min_turning_radius: st
         "odom_topic": "/odom_combined",
         "min_y_velocity_threshold": "0.001",
         "bt_navigator.ros__parameters.navigators": "['navigate_to_pose']",
-        "bt_navigator.ros__parameters.navigate_to_pose.plugin": (
-            "nav2_bt_navigator::NavigateToPoseNavigator"
-        ),
+        "bt_navigator.ros__parameters.navigate_to_pose.plugin": ("nav2_bt_navigator::NavigateToPoseNavigator"),
         "bt_navigator.ros__parameters.default_server_timeout": "30000",
         "controller_server.ros__parameters.controller_frequency": "20.0",
         "controller_server.ros__parameters.min_x_velocity_threshold": "0.001",
@@ -72,8 +70,8 @@ def _nav2_param_rewrites(spawn_x: str, spawn_y: str, smac_min_turning_radius: st
         "planner_server.ros__parameters.GridBased.minimum_turning_radius": smac_min_turning_radius,
         "planner_server.ros__parameters.GridBased.angle_quantization_bins": "72",
         "planner_server.ros__parameters.GridBased.reverse_penalty": "4.0",
-    "planner_server.ros__parameters.GridBased.change_penalty": "0.2",
-    "planner_server.ros__parameters.GridBased.non_straight_penalty": "0.6",
+        "planner_server.ros__parameters.GridBased.change_penalty": "0.2",
+        "planner_server.ros__parameters.GridBased.non_straight_penalty": "0.6",
         "planner_server.ros__parameters.GridBased.cost_penalty": "2.0",
         "planner_server.ros__parameters.GridBased.allow_unknown": "true",
         "global_costmap.global_costmap.ros__parameters.update_frequency": "0.75",

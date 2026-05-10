@@ -22,7 +22,9 @@ def _default_roboworks_sdf() -> str:
         desc_share = get_package_share_directory("robotverseny_description")
         return os.path.join(desc_share, "models", "roboworks", "model.sdf")
     except Exception:
-        return "/home/dominik/ros2_ws/src/ros2_hybrid_astar_nav2/sim/roboworks_model/roboworks/model.sdf"
+        # Fall back to the bundled roboworks model shipped in this package.
+        pkg_share = get_package_share_directory("hybrid_astar_planner")
+        return os.path.join(pkg_share, "roboworks", "model.sdf")
 
 
 def generate_launch_description() -> LaunchDescription:
