@@ -36,8 +36,14 @@ def _nav2_param_rewrites(spawn_x: str, spawn_y: str, smac_min_turning_radius: st
         "transform_tolerance": "1.0",
         "odom_topic": "/odom_combined",
         "min_y_velocity_threshold": "0.001",
-        "bt_navigator.ros__parameters.navigators": "['navigate_to_pose']",
-        "bt_navigator.ros__parameters.navigate_to_pose.plugin": ("nav2_bt_navigator::NavigateToPoseNavigator"),
+        # Humble bt_navigator: it always loads BOTH navigate_to_pose and
+        # navigate_through_poses BTs at configure time, instantiating every BT
+        # node (which includes ComputePathThroughPoses). The
+        # nav2_hybrid_astar_server provides BOTH actions, but its Python init
+        # is slow (param declarations, wall memory load, subscriber setup),
+        # easily exceeding the default 1000ms wait_for_service_timeout. This
+        # raises the timeout to 60s so the BT load survives the race.
+        "bt_navigator.ros__parameters.wait_for_service_timeout": "60000",
         "bt_navigator.ros__parameters.default_server_timeout": "30000",
         "controller_server.ros__parameters.controller_frequency": "20.0",
         "controller_server.ros__parameters.min_x_velocity_threshold": "0.001",
@@ -261,9 +267,15 @@ def _launch_setup(context, *args, **kwargs):
         odom_to_base,
         base_to_footprint,
         base_to_laser,
-        nav2,
+        # Start the Hybrid A* action server FIRST so its
+        # `compute_path_to_pose` and `compute_path_through_poses` actions
+        # are advertised before bt_navigator configures and waits for them.
         hybrid_global_planner,
         global_costmap_compat,
+        # Delay Nav2 bringup so the Python action server has time to come up
+        # before bt_navigator reaches its BT load step. Combined with the
+        # wait_for_service_timeout override this prevents the configure race.
+        TimerAction(period=3.0, actions=[nav2]),
         TimerAction(period=8.0, actions=[initial_pose_seed]),
         delivery,
         TimerAction(period=10.0, actions=[rviz]),

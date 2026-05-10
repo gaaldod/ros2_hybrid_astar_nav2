@@ -173,9 +173,6 @@ def _launch_setup(context, *args, **kwargs):
                 "steering_change_penalty": 0.1,
                 "planner_max_iterations": 12000,
                 "planner_timeout_sec": 20.0,
-                # Inflate remembered collision points more aggressively so replans
-                # avoid hugging the same corner/wall zones.
-                "wall_memory_inflation_radius_m": 0.9,
             }
         ],
     )

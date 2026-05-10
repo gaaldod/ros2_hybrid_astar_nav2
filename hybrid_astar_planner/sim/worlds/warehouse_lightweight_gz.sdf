@@ -17,6 +17,13 @@
             name="ignition::gazebo::systems::UserCommands" />
     <plugin filename="ignition-gazebo-scene-broadcaster-system"
             name="ignition::gazebo::systems::SceneBroadcaster" />
+    <!-- Required so <sensor> blocks (gpu_lidar, imu, rgbd_camera) actually
+         publish on Gazebo topics. Without it, sensors load silently and
+         no /scan, /imu, /camera/* topics are produced. -->
+    <plugin filename="ignition-gazebo-sensors-system"
+            name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
 
     <!-- Inline directional light (avoids model://sun fuel lookup) -->
     <light type="directional" name="sun">
@@ -209,7 +216,7 @@
               name="ignition::gazebo::systems::TrajectoryFollower">
         <link_name>link</link_name>
         <loop>true</loop>
-        <force>10</force>
+        <force>2</force>
         <torque>10</torque>
         <waypoints>
           <waypoint>0 -8</waypoint>

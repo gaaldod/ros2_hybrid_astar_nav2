@@ -80,7 +80,6 @@ This launch (see source for exact defaults):
 - Starts **`nav2_hybrid_astar_server`** with inline parameters (current file), e.g.:
   - `minimum_turning_radius: 1.35`, `allow_reverse: true`, `angle_quantization_bins: 72`
   - `planner_max_iterations: 12000`, `planner_timeout_sec: 20.0`
-  - `wall_memory_inflation_radius_m: 0.9`
   - Penalties: `reverse_penalty`, `non_straight_penalty`, `direction_change_penalty`, `steering_change_penalty` as set in the launch file.
 - Includes **`delivery_stack`** with `launch_hybrid_global:=false` so the Hybrid A* server is **not** duplicated (the corner launch owns the planner node).
 - **TimerAction** delayed **initial_pose_seed_node** and **RViz**.

@@ -559,8 +559,7 @@
         <wheel_base>0.262</wheel_base>
         <wheel_separation>0.3187</wheel_separation>
         <wheel_radius>0.0625</wheel_radius>
-        <odom_publish_frequency>1</odom_publish_frequency>
-        <topic>roboworks/cmd_vel</topic>
+        <odom_publish_frequency>50</odom_publish_frequency>
         <min_velocity>-2</min_velocity>
         <max_velocity>2</max_velocity>
         <min_acceleration>-0.1</min_acceleration>

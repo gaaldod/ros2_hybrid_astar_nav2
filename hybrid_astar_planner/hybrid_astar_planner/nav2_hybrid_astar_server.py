@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-import json
 import math
-import os
 import re
 import struct
 import threading
@@ -91,14 +89,6 @@ class Nav2HybridAStarServer(Node):
         self.declare_parameter("plan_fallback_keepalive_dist_to_global_m", 0.8)
         self.declare_parameter("plan_fallback_max_global_age_sec", 20.0)
         self.declare_parameter("plan_fallback_max_dist_for_age_m", 1.6)
-        self.declare_parameter("wall_memory_enabled", True)
-        self.declare_parameter("wall_memory_path", "/tmp/hybrid_astar_wall_memory/walls.json")
-        self.declare_parameter("wall_memory_inflation_radius_m", 0.7)
-        self.declare_parameter("wall_memory_max_points", 300)
-        self.declare_parameter("wall_memory_min_separation_m", 0.6)
-        self.declare_parameter("wall_memory_capture_cooldown_sec", 0.75)
-        self.declare_parameter("wall_memory_collision_substring", "RegulatedPurePursuitController detected collision ahead!")
-        self.declare_parameter("wall_memory_controller_logger_name", "controller_server")
         self.declare_parameter("live_obstacle_cloud_enabled", True)
         self.declare_parameter("live_obstacle_cloud_topic", "tracked_obstacles_cloud")
         self.declare_parameter("live_obstacle_cloud_timeout_sec", 1.5)
@@ -238,24 +228,6 @@ class Nav2HybridAStarServer(Node):
         self._plan_fallback_max_dist_for_age_m = max(
             self._plan_fallback_keepalive_dist_to_global_m,
             float(self.get_parameter("plan_fallback_max_dist_for_age_m").value),
-        )
-        self._wall_memory_enabled = bool(self.get_parameter("wall_memory_enabled").value)
-        self._wall_memory_path = str(self.get_parameter("wall_memory_path").value)
-        self._wall_memory_inflation_radius_m = float(
-            self.get_parameter("wall_memory_inflation_radius_m").value
-        )
-        self._wall_memory_max_points = int(self.get_parameter("wall_memory_max_points").value)
-        self._wall_memory_min_separation_m = float(
-            self.get_parameter("wall_memory_min_separation_m").value
-        )
-        self._wall_memory_capture_cooldown_sec = float(
-            self.get_parameter("wall_memory_capture_cooldown_sec").value
-        )
-        self._wall_memory_collision_substring = str(
-            self.get_parameter("wall_memory_collision_substring").value
-        )
-        self._wall_memory_controller_logger_name = str(
-            self.get_parameter("wall_memory_controller_logger_name").value
         )
         self._live_obstacle_cloud_enabled = bool(
             self.get_parameter("live_obstacle_cloud_enabled").value
@@ -522,9 +494,6 @@ class Nav2HybridAStarServer(Node):
         self._startup_map_yaw: Optional[float] = None
         self._rejected_path_memory: list[tuple[float, list[Pose2D]]] = []
         self._rejected_obstacle_memory: list[tuple[float, list[tuple[float, float]]]] = []
-        self._wall_points: list[tuple[float, float]] = []
-        self._wall_memory_lock = threading.Lock()
-        self._last_wall_capture_walltime: float = 0.0
         self._live_obstacle_points: list[tuple[float, float]] = []
         self._live_obstacle_lock = threading.Lock()
         self._live_obstacle_stamp_walltime: float = 0.0
@@ -607,7 +576,6 @@ class Nav2HybridAStarServer(Node):
         self.get_logger().info(
             "Nav2HybridAStarServer ready. Actions: 'compute_path_to_pose', 'compute_path_through_poses'."
         )
-        self._load_wall_memory()
         if self._local_takeover_enabled:
             self.create_timer(1.0 / self._local_takeover_rate_hz, self._local_takeover_tick)
             self.get_logger().info(
@@ -722,7 +690,6 @@ class Nav2HybridAStarServer(Node):
         self._apply_static_inflation_to_data(
             base_map_data, inflation_radius_m=self._planning_grid_static_inflation_radius_m
         )
-        self._apply_wall_memory_to_data(base_map_data)
         # Apply live obstacles with the configured inflation
         map_data = list(base_map_data)
         self._apply_live_obstacles_to_data(
@@ -996,7 +963,6 @@ class Nav2HybridAStarServer(Node):
         self._apply_static_inflation_to_data(
             base_map_data, inflation_radius_m=self._planning_grid_static_inflation_radius_m
         )
-        self._apply_wall_memory_to_data(base_map_data)
         self._apply_live_obstacles_to_data(base_map_data)
         local_planner_cfg = dict(self._planner_cfg)
         if self._local_takeover_forward_only:
@@ -1411,22 +1377,6 @@ class Nav2HybridAStarServer(Node):
                     )
                     self._last_local_takeover_log_walltime = now
 
-        if not self._wall_memory_enabled:
-            return
-        if self._wall_memory_controller_logger_name not in msg.name:
-            return
-        if self._wall_memory_collision_substring not in msg.msg:
-            return
-
-        if (now - self._last_wall_capture_walltime) < self._wall_memory_capture_cooldown_sec:
-            return
-        self._last_wall_capture_walltime = now
-
-        pose = self._get_robot_pose()
-        if pose is None:
-            return
-        self._add_wall_point(pose.pose.position.x, pose.pose.position.y)
-
     def _on_live_obstacle_cloud(self, msg: PointCloud2) -> None:
         # Local planner publishes dense xyz float32 cloud in map frame.
         if msg.width == 0 or msg.point_step <= 0:
@@ -1457,80 +1407,6 @@ class Nav2HybridAStarServer(Node):
         with self._live_obstacle_lock:
             self._live_obstacle_points = points
             self._live_obstacle_stamp_walltime = time.perf_counter()
-
-    def _load_wall_memory(self) -> None:
-        if not self._wall_memory_enabled:
-            return
-        try:
-            if not os.path.exists(self._wall_memory_path):
-                return
-            with open(self._wall_memory_path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            pts = payload.get("points", [])
-            loaded: list[tuple[float, float]] = []
-            for p in pts:
-                x = float(p["x"])
-                y = float(p["y"])
-                loaded.append((x, y))
-            self._wall_points = loaded[-self._wall_memory_max_points :]
-            self.get_logger().info(
-                f"wall_memory loaded: {len(self._wall_points)} points from {self._wall_memory_path}"
-            )
-        except Exception as ex:
-            self.get_logger().warn(f"wall_memory load failed: {ex}")
-
-    def _save_wall_memory(self) -> None:
-        if not self._wall_memory_enabled:
-            return
-        try:
-            folder = os.path.dirname(self._wall_memory_path)
-            if folder:
-                os.makedirs(folder, exist_ok=True)
-            payload = {"points": [{"x": x, "y": y} for x, y in self._wall_points]}
-            with open(self._wall_memory_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f)
-        except Exception as ex:
-            self.get_logger().warn(f"wall_memory save failed: {ex}")
-
-    def _add_wall_point(self, x: float, y: float) -> None:
-        with self._wall_memory_lock:
-            for px, py in self._wall_points:
-                if (px - x) * (px - x) + (py - y) * (py - y) < (
-                    self._wall_memory_min_separation_m * self._wall_memory_min_separation_m
-                ):
-                    return
-            self._wall_points.append((x, y))
-            if len(self._wall_points) > self._wall_memory_max_points:
-                self._wall_points = self._wall_points[-self._wall_memory_max_points :]
-            self._save_wall_memory()
-        self.get_logger().warn(
-            f"wall_memory captured point=({x:.2f},{y:.2f}) total={len(self._wall_points)}"
-        )
-
-    def _apply_wall_memory_to_data(self, data: list[int]) -> None:
-        if not self._wall_memory_enabled:
-            return
-        if self._map_wrapper is None:
-            return
-        with self._wall_memory_lock:
-            points = list(self._wall_points)
-        if not points:
-            return
-        info = self._map_wrapper.info
-        radius_cells = max(1, int(math.ceil(self._wall_memory_inflation_radius_m / info.resolution)))
-        for wx, wy in points:
-            center = self._map_wrapper.world_to_grid(wx, wy)
-            for dy in range(-radius_cells, radius_cells + 1):
-                iy = center.iy + dy
-                if iy < 0 or iy >= info.height:
-                    continue
-                for dx in range(-radius_cells, radius_cells + 1):
-                    ix = center.ix + dx
-                    if ix < 0 or ix >= info.width:
-                        continue
-                    if dx * dx + dy * dy > radius_cells * radius_cells:
-                        continue
-                    data[iy * info.width + ix] = 100
 
     def _apply_live_obstacles_to_data(
         self,
@@ -2096,7 +1972,6 @@ class Nav2HybridAStarServer(Node):
             self._apply_static_inflation_to_data(
                 base_map_data, inflation_radius_m=self._planning_grid_static_inflation_radius_m
             )
-            self._apply_wall_memory_to_data(base_map_data)
             start = start_raw
             target = target_raw
             plan = None
@@ -2413,7 +2288,6 @@ class Nav2HybridAStarServer(Node):
         total_cost = 0.0
 
         map_data = list(self._map.data)
-        self._apply_wall_memory_to_data(map_data)
         self._apply_live_obstacles_to_data(map_data)
         planner = HybridAStarPlanner(self._map_wrapper.info, map_data, **self._planner_cfg)
         for pose_stamped in goal_handle.request.goals:

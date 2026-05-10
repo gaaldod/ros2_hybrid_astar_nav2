@@ -114,7 +114,9 @@ class AnchorFrameGuardNode(Node):
         self._last_speed_mps: float = 0.0
         self._persistent_drift_start: float = 0.0
         self._persistent_stop_active: bool = False
-        self._last_persistent_stop_log_walltime: float = 0.0
+        self._was_persistent_stop_active: bool = False
+        self._cooldown_warned: bool = False
+        self._speed_gate_warned: bool = False
         self._last_goal: Optional[PoseStamped] = None
         self._goal_republish_due_walltime: float = 0.0
 
@@ -208,7 +210,7 @@ class AnchorFrameGuardNode(Node):
 
         now = time.perf_counter()
         if dxy >= self._drift_warn_m or dyaw >= self._drift_warn_yaw_rad:
-            if (now - self._last_warn_walltime) > 1.0:
+            if (now - self._last_warn_walltime) > 5.0:
                 self.get_logger().warn(
                     "anchor_frame_guard drift "
                     f"(dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f}, "
@@ -227,14 +229,19 @@ class AnchorFrameGuardNode(Node):
         else:
             self._persistent_drift_start = 0.0
             self._persistent_stop_active = False
-        if self._persistent_stop_active and (now - self._last_persistent_stop_log_walltime) > 1.0:
+        if self._persistent_stop_active and not self._was_persistent_stop_active:
             self.get_logger().warn(
-                "anchor_frame_guard persistent drift stop active "
+                "anchor_frame_guard drift stop ENGAGED "
                 f"(dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f}, "
-                f"held_for={(now - self._persistent_drift_start):.1f}s, "
-                f"threshold={self._persistent_drift_stop_sec:.1f}s)"
+                f"sustained_for={(now - self._persistent_drift_start):.1f}s)"
             )
-            self._last_persistent_stop_log_walltime = now
+            self._was_persistent_stop_active = True
+        elif not self._persistent_stop_active and self._was_persistent_stop_active:
+            self.get_logger().warn(
+                "anchor_frame_guard drift stop CLEARED "
+                f"(dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f})"
+            )
+            self._was_persistent_stop_active = False
 
         if not self._reseed_enabled:
             return
@@ -255,20 +262,26 @@ class AnchorFrameGuardNode(Node):
         if not (hard_trigger or sustained_trigger or persistent_trigger):
             return
         if (now - self._last_reseed_walltime) < self._reseed_cooldown_sec:
-            self.get_logger().warn(
-                "anchor_frame_guard reseed failed "
-                f"(reason=cooldown, remaining={self._reseed_cooldown_sec - (now - self._last_reseed_walltime):.2f}s, "
-                f"dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f})"
-            )
+            if not self._cooldown_warned:
+                self.get_logger().warn(
+                    "anchor_frame_guard reseed gated by cooldown "
+                    f"(remaining={self._reseed_cooldown_sec - (now - self._last_reseed_walltime):.1f}s, "
+                    f"dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f})"
+                )
+                self._cooldown_warned = True
             return
+        self._cooldown_warned = False
         if self._last_speed_mps > self._reseed_max_speed_mps:
-            self.get_logger().warn(
-                "anchor_frame_guard reseed failed "
-                f"(reason=speed_gate, speed={self._last_speed_mps:.3f}mps, "
-                f"limit={self._reseed_max_speed_mps:.3f}mps, "
-                f"dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f})"
-            )
+            if not self._speed_gate_warned:
+                self.get_logger().warn(
+                    "anchor_frame_guard reseed gated by motion "
+                    f"(speed={self._last_speed_mps:.3f}mps, "
+                    f"limit={self._reseed_max_speed_mps:.3f}mps, "
+                    f"dxy={dxy:.3f}m, dyaw_deg={math.degrees(dyaw):.1f})"
+                )
+                self._speed_gate_warned = True
             return
+        self._speed_gate_warned = False
 
         # Bound correction step to avoid violent map frame snaps.
         if dxy > self._max_reseed_xy_step_m:
