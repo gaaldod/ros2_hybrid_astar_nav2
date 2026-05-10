@@ -143,9 +143,9 @@ def _launch_setup(context, *args, **kwargs):
             {
                 "use_sim_time": True,
                 "minimum_turning_radius": 1.35,
-                "allow_reverse": False,
+                "allow_reverse": True,
                 "angle_quantization_bins": 72,
-                "allow_primitive_interpolation": False,
+                "allow_primitive_interpolation": True,
                 "reverse_penalty": 1.2,
                 "non_straight_penalty": 0.6,
                 "direction_change_penalty": 0.3,

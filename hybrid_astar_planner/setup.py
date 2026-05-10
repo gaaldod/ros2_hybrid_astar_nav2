@@ -104,6 +104,7 @@ setup(
             "anchor_frame_guard_node = hybrid_astar_planner.anchor_frame_guard_node:main",
             "reverse_recovery_node = hybrid_astar_planner.reverse_recovery_node:main",
             "replan_watchdog_node = hybrid_astar_planner.replan_watchdog_node:main",
+            "moving_obstacle_driver_node = hybrid_astar_planner.moving_obstacle_driver_node:main",
         ],
     },
 )

@@ -28,3 +28,20 @@
   gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
 
+# Moving obstacle (warehouse_lightweight_gz.sdf::moving_box). The Gazebo
+# VelocityControl plugin on the model subscribes to /model/moving_box/cmd_vel,
+# the OdometryPublisher plugin publishes /model/moving_box/odometry. Both are
+# bridged to ROS so that moving_obstacle_driver_node can drive the box at
+# constant velocity and reverse direction at waypoints.
+- ros_topic_name: "/moving_box/cmd_vel"
+  gz_topic_name: "/model/moving_box/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/moving_box/odometry"
+  gz_topic_name: "/model/moving_box/odometry"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+

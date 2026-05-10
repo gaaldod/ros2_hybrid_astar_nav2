@@ -302,6 +302,26 @@ def generate_launch_description() -> LaunchDescription:
         ],
     )
 
+    moving_obstacle_driver = Node(
+        package="hybrid_astar_planner",
+        executable="moving_obstacle_driver_node",
+        name="moving_obstacle_driver_node",
+        output="screen",
+        parameters=[
+            {
+                "cmd_vel_topic": "/moving_box/cmd_vel",
+                "odometry_topic": "/moving_box/odometry",
+                "speed_mps": 0.5,
+                "waypoint_y_min": -8.0,
+                "waypoint_y_max": 8.0,
+                "reverse_distance_m": 1.0,
+                "publish_rate_hz": 20.0,
+                "initial_direction": 1,
+                "use_sim_time": use_sim_time,
+            }
+        ],
+    )
+
     return LaunchDescription(
         [
             declare_use_sim_time,
@@ -317,5 +337,6 @@ def generate_launch_description() -> LaunchDescription:
             anchor_frame_guard,
             safety,
             hybrid_global,
+            moving_obstacle_driver,
         ]
     )
