@@ -11,6 +11,30 @@ def _collect_files(relative_root: str) -> list[str]:
         return []
     return [str(p) for p in root.rglob("*") if p.is_file()]
 
+
+def _collect_data_files(relative_root: str, install_root: str):
+    """Yield setuptools data_files entries that preserve subdirectory layout.
+
+    setuptools' ``data_files`` flattens file basenames into a single install
+    directory. To install ``sim/worlds/foo.sdf`` at
+    ``share/<pkg>/sim/worlds/foo.sdf`` (rather than ``share/<pkg>/sim/foo.sdf``)
+    we emit one ``(install_dir, [files])`` tuple per source subdirectory.
+    """
+    root = Path(relative_root)
+    if not root.exists():
+        return []
+    groups: dict[str, list[str]] = {}
+    for p in root.rglob("*"):
+        if not p.is_file():
+            continue
+        rel_parent = p.parent.relative_to(root).as_posix()
+        if rel_parent in ("", "."):
+            target_dir = install_root
+        else:
+            target_dir = f"{install_root}/{rel_parent}"
+        groups.setdefault(target_dir, []).append(str(p))
+    return [(install_dir, files) for install_dir, files in groups.items()]
+
 setup(
     name=package_name,
     version="0.1.0",
@@ -51,11 +75,11 @@ setup(
             "share/" + package_name + "/maps",
             ["maps/warehouse_lightweight_map.yaml", "maps/warehouse_lightweight_map.pgm"],
         ),
-    # Simulation assets (SDF model, meshes).
-    # Collect files from the repository's sim/ directory if present. Using
-    # _collect_files avoids referencing build/ paths or non-existent files.
-    # Install under share/<package>/sim with repository-relative paths.
-    ("share/" + package_name + "/sim", _collect_files("sim")),
+    # Simulation assets (SDF worlds, models, meshes). _collect_data_files
+    # preserves the subdirectory structure so that the launch files can rely
+    # on canonical paths like share/<pkg>/sim/worlds/<world>.sdf and the
+    # GZ_MODEL_PATH model:// resolver finds share/<pkg>/sim/models/<name>/model.sdf.
+    *_collect_data_files("sim", "share/" + package_name + "/sim"),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -72,7 +96,6 @@ setup(
             "obstacle_tracker_node = hybrid_astar_planner.obstacle_tracker_node:main",
             "local_planner_node = hybrid_astar_planner.local_planner_node:main",
             "ackermann_safety_controller_node = hybrid_astar_planner.ackermann_safety_controller_node:main",
-            "moving_obstacles_node = hybrid_astar_planner.moving_obstacles_node:main",
             "odom_tf_bridge_node = hybrid_astar_planner.odom_tf_bridge_node:main",
             "initial_pose_seed_node = hybrid_astar_planner.initial_pose_seed_node:main",
             "global_costmap_compat_node = hybrid_astar_planner.global_costmap_compat_node:main",

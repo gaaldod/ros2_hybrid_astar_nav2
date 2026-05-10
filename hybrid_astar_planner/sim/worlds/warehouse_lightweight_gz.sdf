@@ -1,53 +1,227 @@
 <?xml version="1.0"?>
 <sdf version="1.7">
   <world name="warehouse_lightweight">
-    <include>
-      <uri>model://sun</uri>
-    </include>
 
-    <!-- Simple static ground plane -->
-    <include>
-      <uri>model://ground_plane</uri>
-    </include>
+    <!-- Physics tuned for Ignition Fortress (modern Gazebo Sim 6).
+         The legacy Gazebo Classic <real_time_update_rate> tag is intentionally
+         not used here; <real_time_factor> is the supported field. -->
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
 
-    <!-- A lightweight box model that will be driven by a trajectory plugin -->
-    <actor name="moving_box">
-      <pose>0 0 0.35 0 0 0</pose>
-      <skin>
-        <filename>model://box/meshes/box.dae</filename>
-        <scale>1 1 1</scale>
-      </skin>
-      <animation name="move_y">
-        <interpolate_x>true</interpolate_x>
-      </animation>
-      <script>
-        <trajectory id="0" type="walking">
-          <waypoint>
-            <time>0</time>
-            <pose>0 -8 0.35 0 0 0</pose>
-          </waypoint>
-          <waypoint>
-            <time>32</time>
-            <pose>0 8 0.35 0 0 0</pose>
-          </waypoint>
-          <waypoint>
-            <time>64</time>
-            <pose>0 -8 0.35 0 0 0</pose>
-          </waypoint>
-        </trajectory>
-      </script>
-    </actor>
+    <!-- Explicit system plugins (some setups don't auto-load these). -->
+    <plugin filename="ignition-gazebo-physics-system"
+            name="ignition::gazebo::systems::Physics" />
+    <plugin filename="ignition-gazebo-user-commands-system"
+            name="ignition::gazebo::systems::UserCommands" />
+    <plugin filename="ignition-gazebo-scene-broadcaster-system"
+            name="ignition::gazebo::systems::SceneBroadcaster" />
 
-    <!-- lighting / physics tuned for lightweight sim -->
+    <!-- Inline directional light (avoids model://sun fuel lookup) -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Inline static ground plane (avoids model://ground_plane fuel lookup) -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Outer warehouse walls (22 x 22 m enclosure centred on origin). Imported
+         from warehouse_lightweight.world so the lidar in the active Fortress
+         simulation has actual surfaces to scan, allowing AMCL to localise
+         against the static occupancy-grid map. -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 10 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>22 0.3 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>22 0.3 2.0</size></box></geometry>
+          <material>
+            <ambient>0.45 0.45 0.45 1</ambient>
+            <diffuse>0.45 0.45 0.45 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -10 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>22 0.3 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>22 0.3 2.0</size></box></geometry>
+          <material>
+            <ambient>0.45 0.45 0.45 1</ambient>
+            <diffuse>0.45 0.45 0.45 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-10 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 20 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 20 2.0</size></box></geometry>
+          <material>
+            <ambient>0.45 0.45 0.45 1</ambient>
+            <diffuse>0.45 0.45 0.45 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_east">
+      <static>true</static>
+      <pose>10 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 20 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 20 2.0</size></box></geometry>
+          <material>
+            <ambient>0.45 0.45 0.45 1</ambient>
+            <diffuse>0.45 0.45 0.45 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Two shelf rows (interior static obstacles). -->
+    <model name="shelf_row_1">
+      <static>true</static>
+      <pose>-3.0 -2.5 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.2 7.0 1.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.2 7.0 1.5</size></box></geometry>
+          <material>
+            <ambient>0.35 0.35 0.35 1</ambient>
+            <diffuse>0.35 0.35 0.35 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="shelf_row_2">
+      <static>true</static>
+      <pose>2.0 1.5 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.2 7.0 1.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.2 7.0 1.5</size></box></geometry>
+          <material>
+            <ambient>0.35 0.35 0.35 1</ambient>
+            <diffuse>0.35 0.35 0.35 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Dynamic obstacle: a regular rigid-body model whose motion is driven
+         autonomously by the Ignition Fortress TrajectoryFollower system
+         plugin. No ROS-side node is involved. The link has explicit
+         collision/visual so the lidar can detect it and the planner can
+         react to it through the costmap obstacle layer. -->
+    <model name="moving_box">
+      <pose>0 -8 0.5 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>1.0</mass>
+          <inertia>
+            <ixx>0.16666</ixx>
+            <iyy>0.16666</iyy>
+            <izz>0.16666</izz>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1.0 1.0 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1.0 1.0 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.4 0.2 1</ambient>
+            <diffuse>0.7 0.4 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <plugin filename="ignition-gazebo-trajectory-follower-system"
+              name="ignition::gazebo::systems::TrajectoryFollower">
+        <link_name>link</link_name>
+        <loop>true</loop>
+        <force>10</force>
+        <torque>10</torque>
+        <waypoints>
+          <waypoint>0 -8</waypoint>
+          <waypoint>0  8</waypoint>
+        </waypoints>
+      </plugin>
+    </model>
+
     <scene>
       <ambient>0.4 0.4 0.4 1</ambient>
       <background>0.7 0.7 0.7 1</background>
     </scene>
-
-    <physics type='ode'>
-      <max_step_size>0.001</max_step_size>
-      <real_time_update_rate>1000</real_time_update_rate>
-    </physics>
 
   </world>
 </sdf>

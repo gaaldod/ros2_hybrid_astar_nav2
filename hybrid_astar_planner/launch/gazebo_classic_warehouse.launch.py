@@ -5,9 +5,8 @@ import os
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, SetEnvironmentVariable, Shutdown
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -56,23 +55,14 @@ def generate_launch_description() -> LaunchDescription:
             ]
         )
     world_light = os.path.join(pkg_share, "sim", "worlds", "warehouse_lightweight.world")
-    # Use a launch-time expression (not a raw Python bool) so IfCondition
-    # receives a proper Substitution object and the front-end can evaluate it.
-    use_light_expr = PythonExpression("True")
     spawn_x = LaunchConfiguration("spawn_x")
     spawn_y = LaunchConfiguration("spawn_y")
     spawn_z = LaunchConfiguration("spawn_z")
     spawn_yaw = LaunchConfiguration("spawn_yaw")
     roboworks_sdf = LaunchConfiguration("roboworks_sdf")
 
-    # Lightweight world only; no AWS assets required for tests here.
-    # Keep any user-provided model path (no AWS prefixing).
-    model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
-
     return LaunchDescription(
         [
-            # Keep this flag so the heavy AWS-assets mode can be removed later if the
-            # lightweight world proves sufficient for production testing.
             DeclareLaunchArgument("spawn_x", default_value="-6.0"),
             DeclareLaunchArgument("spawn_y", default_value="-8.0"),
             DeclareLaunchArgument("spawn_z", default_value="0.2"),
@@ -103,14 +93,6 @@ def generate_launch_description() -> LaunchDescription:
                     "-Y",
                     spawn_yaw,
                 ],
-            ),
-            Node(
-                # Lightweight mode: move simple cube obstacles with deterministic trajectories.
-                condition=IfCondition(use_light_expr),
-                package="hybrid_astar_planner",
-                executable="moving_obstacles_node",
-                output="screen",
-                parameters=[{"use_sim_time": True}],
             ),
         ]
     )

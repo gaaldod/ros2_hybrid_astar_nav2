@@ -292,25 +292,6 @@ def _launch_setup(context, *args, **kwargs):
     return [
         LogInfo(msg="Starting modern Gazebo + Nav2 corner goal test stack"),
         sim,
-        # Start the moving obstacle node after the sim has a moment to initialize.
-        TimerAction(
-            period=4.0,
-            actions=[
-                Node(
-                    package="hybrid_astar_planner",
-                    executable="moving_obstacles_node",
-                    name="moving_obstacles_node",
-                    output="screen",
-                    parameters=[
-                        {"use_sim_time": True},
-                        # Example moving obstacle params (override in launch args if desired)
-                        {"moving_obstacle_name": "moving_center_box"},
-                        {"moving_obstacle_amp_y": 8.0},
-                        {"moving_obstacle_freq": 0.25},
-                    ],
-                )
-            ],
-        ),
         odom_to_base,
         base_to_footprint,
         base_to_laser,

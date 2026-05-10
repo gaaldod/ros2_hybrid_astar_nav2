@@ -83,7 +83,9 @@ This launch (see source for exact defaults):
   - `wall_memory_inflation_radius_m: 0.9`
   - Penalties: `reverse_penalty`, `non_straight_penalty`, `direction_change_penalty`, `steering_change_penalty` as set in the launch file.
 - Includes **`delivery_stack`** with `launch_hybrid_global:=false` so the Hybrid A* server is **not** duplicated (the corner launch owns the planner node).
-- **TimerAction** delayed **initial_pose_seed_node**, **RViz**, and optional **moving_obstacles_node**.
+- **TimerAction** delayed **initial_pose_seed_node** and **RViz**.
+- **Static warehouse**: `sim/worlds/warehouse_lightweight_gz.sdf` (Fortress) and `sim/worlds/warehouse_lightweight.world` (Classic) define a 22 × 22 m enclosure with four perimeter walls and two interior shelf rows. Both files now live inside the `hybrid_astar_planner` package (`hybrid_astar_planner/sim/worlds/...`) and are installed automatically by `setup.py`, so the lidar in either Gazebo backend has real surfaces to scan and AMCL can localise against the matching occupancy grid.
+- **Dynamic obstacle**: a `moving_box` model is embedded directly in `sim/worlds/warehouse_lightweight_gz.sdf` and driven by the Ignition Fortress `TrajectoryFollower` system plugin, so no ROS-side moving-obstacle node is required. The lidar sees it via the model's `<collision>` link.
 
 **Hybrid A* tuning** lives mainly in `gz_modern_nav2_corner_test.launch.py` (planner node) and `delivery_stack.launch.py` (pipeline + anchor + safety). Edit those files rather than hunting scattered defaults.
 

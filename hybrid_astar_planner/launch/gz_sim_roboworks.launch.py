@@ -21,16 +21,19 @@ def generate_launch_description() -> LaunchDescription:
 
     # Use installed package share paths (works both from source + install space).
     pkg_share = get_package_share_directory("hybrid_astar_planner")
-    sdf_file = os.path.join(pkg_share, "sim", "roboworks_model", "roboworks", "model.sdf")
+    sdf_file = os.path.join(pkg_share, "sim", "models", "roboworks", "model.sdf")
     bridge_config = os.path.join(pkg_share, "sim", "bridge_minimal.yaml")
     world_file = os.path.join(pkg_share, "sim", "worlds", "warehouse_lightweight_gz.sdf")
     spawn_x = LaunchConfiguration("spawn_x")
     spawn_y = LaunchConfiguration("spawn_y")
     spawn_z = LaunchConfiguration("spawn_z")
 
-    # Ensure the simulator can find models referenced by model:// URIs in our sim/ folder.
-    # Modern ros_gz uses GZ_MODEL_PATH; older Gazebo uses GAZEBO_MODEL_PATH — set both.
-    model_path = os.path.join(pkg_share, "sim")
+    # Ensure the simulator can resolve `model://roboworks/...` and `model://box/...`
+    # URIs by pointing the resource path at the directory that contains those
+    # model folders. Ignition Fortress uses IGN_GAZEBO_RESOURCE_PATH (and
+    # respects GZ_SIM_RESOURCE_PATH for forward compatibility); GAZEBO_MODEL_PATH
+    # is kept for any Gazebo Classic launch path that still consumes it.
+    model_path = os.path.join(pkg_share, "sim", "models")
     gz_args = f"-r -v 1 {world_file}"
 
     gz_sim = IncludeLaunchDescription(
@@ -83,8 +86,10 @@ def generate_launch_description() -> LaunchDescription:
             LogInfo(msg=f"World file: {world_file}"),
             LogInfo(msg=f"Robot model SDF: {sdf_file}"),
             LogInfo(msg=f"Bridge config: {bridge_config}"),
-            # Export model path so model://box and other model URIs resolve from this package
-            SetEnvironmentVariable(name="GZ_MODEL_PATH", value=model_path),
+            # Export model resource paths so `model://<name>/...` URIs resolve
+            # from this package's sim/models directory.
+            SetEnvironmentVariable(name="IGN_GAZEBO_RESOURCE_PATH", value=model_path),
+            SetEnvironmentVariable(name="GZ_SIM_RESOURCE_PATH", value=model_path),
             SetEnvironmentVariable(name="GAZEBO_MODEL_PATH", value=model_path),
             gz_sim,
             bridge,
