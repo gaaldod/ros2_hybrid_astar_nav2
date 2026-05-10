@@ -30,7 +30,7 @@ setup(
                 "launch/delivery_stack.launch.py",
                 "launch/gazebo_classic_warehouse.launch.py",
                 "launch/gz_modern_nav2_corner_test.launch.py",
-                "launch/gz_modern_nav2_corner_test_withRRP.launch.py",
+                "launch/gz_modern_nav2_corner_test_withRPP.launch.py",
             ],
         ),
         ("share/" + package_name + "/config", ["config/nav2_roboworks_minimal.yaml"]),
